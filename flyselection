@@ -1,0 +1,80 @@
+library(fslbehavr)
+library(fslscopr)
+library(fslsleepr)
+library(ggplot2)
+library(fslggetho)
+#DGRPscreen/17082020_GBXDL_SD/metadata_GBXDL_SD.csv
+
+metadata <- fread("/14TB/Cloud/Joana/sleep_signature/behaviour/smFISH/metadata_probes.csv")
+metadata$date <- as.character(metadata$date)
+class(metadata$date)
+
+metadata <- fslscopr::link_ethoscope_metadata(metadata,
+                                    result_dir = "/ethoscope_data/results")
+print(metadata)
+
+system.time(
+dt <- fslscopr::load_ethoscope(metadata = metadata,
+                     reference_hour=NA,
+                     FUN = fslsleepr::sleep_annotation,
+                     cache = "/ethoscope_data/cache",
+                     verbose=TRUE,
+                     updateProgress = NULL,
+                     velocity_correction_coef=0.0048
+                     #map_arg=list(velocity_correction_coef="velocity_correction_coef")
+                     )
+)
+
+dt[, phase := ifelse(t %% hours(24) < hours(12), "L", "D")]
+dt_12 <- dt[xmv(batch) == "12"]
+# scale_colour_manual(values = c("#16266B", "#C9007B", '#FE6680'))+
+#scale_fill_manual(values = c("#16266B", "#C9007B", '#FE6680'))
+#[t < hours(44)]
+#height = 1, alpha=0.1, outline=NA
+ggetho(dt_12[xmv(condition) == "SD"], aes(y=asleep, colour=condition)) +
+  ggetho::stat_pop_etho() +
+  stat_ld_annotations(height = 1, alpha=0.1, outline=NA) +
+  facet_grid(replicate ~ .) +
+  theme_classic(base_size=8)+
+  scale_y_continuous("Fraction of time asleep", limits=c(0,1), labels = scales::percent)+
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank())+
+  theme(axis.title.y=element_blank())+
+  scale_colour_manual(values = c("#16266B", "#C9007B", '#FE6680'))+
+  scale_fill_manual(values = c("#16266B", "#C9007B", '#FE6680'))
+
+#for two values: dt[xmv(quality) == "A" | xmv(quality) == "D"]
+
+## SLEEP DURATION
+# make new dt with calculations of mean during L and D
+
+summary_dt_10 <-
+  rejoin(dt_10[,
+                .(
+                  # sleep_fraction_all = mean(asleep),
+                  sleep_fraction_l = mean(asleep[phase == "L"]),
+                  sleep_fraction_d = mean(asleep[phase == "D"])
+                ),
+                ,by=id])
+summary_dt_10
+
+# make summary_dt_melted to make two variables: 'phase' and actual value in 'sleep_fraction'
+
+summary_dt_melted <- melt(summary_dt_10, measure.vars = patterns("sleep_fraction_"),
+                          variable.name = "phase", value.name = "sleep_fraction")
+
+# sleep amount during L, D, total
+
+ggplot(summary_dt_melted, aes(x=replicate, y=sleep_fraction, colour=phase)) +
+  geom_boxplot(outlier.colour = NA, varwidth = TRUE) +
+  scale_y_continuous(name= "Fraction of time asleep",labels = scales::percent)+
+  theme_bw(base_size = 15)
+-----------------------------------------------------------------------------------------------------------
+  #SD analysis: motor rotations
+
+ggetho(dt_12[xmv(condition) == "SD"], aes(y=interactions, colour=condition), summary_FUN = sum, summary_time_window = mins(30))+
+  stat_pop_etho()+
+  stat_ld_annotations(height = 1, alpha=0.1, outline=NA)+
+  facet_grid(replicate ~ .)+
+  theme_classic(base_size=10)+
+  scale_colour_manual(values = "#16266B")+
+  scale_fill_manual(values == "#16266B")
